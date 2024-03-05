@@ -1,0 +1,251 @@
+<html>
+<head>
+	<script src="/socket.io/socket.io.js"></script>
+	<link rel="stylesheet" href="game.css">
+	<script>
+		//handles all the cookies
+		function getCookie(cname) {
+			var name = cname + "=";
+			var decodedCookie = decodeURIComponent(document.cookie);
+			var ca = decodedCookie.split(';');
+			for(var i = 0; i <ca.length; i++) {
+				var c = ca[i];
+				while (c.charAt(0) == ' ') {
+					c = c.substring(1);
+				}
+				if (c.indexOf(name) == 0) {
+					return c.substring(name.length, c.length);
+				}
+			}
+			return "";
+		}
+		var username = getCookie("username");
+		//sends user to home or lobby if not properly connected
+		if (username==""){
+			window.location.href="/";
+		}else if (getCookie("ingame")!="true"){
+			window.location.href="/lobby";
+		}
+		var socket = io.connect(window.location.href);
+		socket.emit("authorizeUser", {username:username,sessionCode:getCookie("sessionCode")});
+		socket.on("authorizeUserResponse", function(data){
+			if(!data.authorized){
+				if(data.errorCode==0){
+					document.cookie = "username=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+					document.cookie = "sessionCode=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+					window.location.href="/";
+				}else if(data.errorCode==1){
+					window.alert("session expired, please sign in again");
+					document.cookie = "username=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+					document.cookie = "sessionCode=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+					window.location.href="/";
+				}else if(data.errorCode==2){
+					window.alert("sorry, this user is already signed in on another page");
+					window.location.href="/";
+				}else if(data.errorCode==3){
+					window.alert("sorry, you are not in a game");
+					window.location.href="/lobby";
+				}
+			}else{
+				socket.emit("getGameInfo", {username:getCookie("username")});
+			}
+		});
+		socket.on("notInGame", function(data){
+			window.location.href="/lobby";
+		});
+	</script>
+	<link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet">
+	<title>Square Battle Game</title>
+	
+</head>
+<body onresize="generateArea(false)">
+	<div id="player">
+		<h2 id="p1name" style="text-align:center"></h2>
+		<div id="place">
+			<p id="cash" style="text-align:center;font-size:20">You have $30</p>
+			<p style="text-align:center;font-size:16">Place a Warrior for $5 <button type="button" onclick="Select(0, this)" id="warriorbutton">Place</button></p>
+			<p>Warriors have 200 starting hitpoints. It takes them 2 energy to move 1 square. Their basic attack costs 3 energy and does 50 melee damage. They have a special attack that costs 5 energy and does 100 damage.</p><br>
+			<p style="text-align:center;font-size:16">Place a Ranger for $4 <button type="button" onclick="Select(1, this)" id="rangerbutton">Place</button></p>
+			<p>Rangers have 80 starting hitpoints. It take them 1 energy to move 1 square. Their attack costs 3 energy and does 40 damage at a max range of 5 blocks. They have a stealth move that costs 6 energy and makes them invisible for 1 turn.</p><br>
+			<p style="text-align:center;font-size:16">Place a Healer for $4 <button type="button" onclick="Select(2, this)" id="healerbutton">Place</button></p>
+			<p>Healers have 100 starting hitpoints. It take them 1.5 energy to move 1 square. Their heal costs 3 energy and heal 50 hp at a max range of 3 blocks. They have a special heal move that costs 5 energy and heals all of a person's or wall's hitpoints.</p><br>
+			<p style="text-align:center;font-size:16">Place a Sniper for $3 <button type="button" onclick="Select(3, this)" id="sniperbutton">Place</button></p>
+			<p>Snipers have 60 starting hitpoints. It take them 1.5 energy to move 1 square. Their basic attack costs 4 energy and does 40 damage at infinite range. They can teleport anywhere on their side for 5 energy.</p><br>
+			<p style="text-align:center;font-size:16">Place a wall for $2 <button type="button" onclick="Select(4, this)" id="wallbutton">Place</button></p>
+			<p>Walls have 100 starting hitpoints. They can't do any moves, but they block snipers, and count as two blocks, instead as one, against rangers.</p>
+		</div>
+		<div id="use">
+			<p id="energy" style="text-align:center;font-size:20">You have <span id="energyamt">0</span> energy <button onclick=endturn()>End Turn</button></p>
+			<div id="stat">
+				<p style='text-align:center;font-size:18px;' id="statName"></p>
+				<p>Hitpoints: <span id="statHitpoints"></span></p>
+				<p>Move (<span id="statMoveCost"></span> energy per square) <button id="statMoveButton">Go</button></p>
+				<p><span id="statActionName"></span> (<span id="statActionCost"></span> energy)<button id="statActionButton">Go</button></p>
+			</div>
+		</div>
+	</div>
+	<div id="playerbox"><p id="timer">1:00</p></div>
+	<div id="board"></div>
+	<div id="opponentbox"></div>
+	<div id="opponent">
+		<h2 id="p2name" style="text-align:center"></h2>
+	</div>
+	<div id="message">Loading</div>
+	<img id="animationImage"></div>
+	<script>
+		//gets info on window and sets it to variables
+		var active = {
+			message:null,
+			type:null,
+			pieceNumber:null,
+			action:null,
+			buttonElement:null,
+			newLoc:null,
+			clear:function(){
+				this.message = null;
+				this.action = null;
+				this.type = null;
+				this.pieceNumber = null;
+				this.buttonElement = null;
+			},
+			setAction:function(message,type,pieceNumber,action){
+				this.message = message;
+				this.type = type;
+				this.pieceNumber = pieceNumber;
+				this.action = action;
+			}
+		}
+		var userNumber;
+		var money = 30;
+		var energy = 0;
+		var allies = [[],[],[],[],[]];
+		var enemies = [[],[],[],[],[]];
+		/*var movesToSubmit=[];
+		function moveObject(type, pieceNumber, action, target){
+			this.type=type;
+			this.pieceNumber=pieceNumber;
+			this.action=action;
+			this.target=target;
+		}*/
+
+		var warrior = {name:"warrior", capName:"Warrior", color:"#ff0000", shadedColor:"ff7777", placementCost:5, moveCost:2,actionCost:3,damage:100,range:1,startHitpoints:200,action:"Attack"};
+		var ranger = {name:"ranger", capName:"Ranger", color:"#00bb00", shadedColor:"77bb77", placementCost:4, moveCost:1,actionCost:3,damage:50,range:4,startHitpoints:80,action:"Attack"};
+		var healer = {name:"healer", capName:"Healer", color:"#ffff00", shadedColor:"ffff99", placementCost:4, moveCost:1.5,actionCost:3,damage:50,range:3,startHitpoints:80,action:"Heal"};
+		var sniper = {name:"sniper", capName:"Sniper", color:"#0000ff", shadedColor:"7777ff", placementCost:3, moveCost:1.5,actionCost:4,damage:30,range:20,startHitpoints:60,action:"Attack"};
+		var wall = {name:"wall", capName:"Wall", color:"#999999", shadedColor:"bbbbbb", placementCost:2, moveCost:null,actionCost:null,damage:null,range:null,startHitpoints:10,action:null};
+		var pieces = [warrior, ranger, healer, sniper, wall];
+
+		var secondsleft = 59;
+		var timerchange;
+		var turn;
+
+		var animationInterval;
+
+		var width = window.innerWidth;
+		var height = window.innerHeight;
+		var board = Math.floor(width/40)*20;
+		var player = Math.ceil((width-board)/2);
+		var opponent = Math.floor((width-board)/2);
+		var playerbox = Math.ceil((height-board)/2);
+		var opponentbox = Math.floor((height-board)/2);
+		var boxes = board/10-2;
+		function generateArea(reset){//sets all the sizes and spaceing
+			width = window.innerWidth;
+			height = window.innerHeight;
+			if(height*2<width+70){
+				board = Math.floor(height/10-4)*10;
+			}else{
+				board = Math.floor(width/40)*20;
+			}
+			player = Math.ceil((width-board)/2);
+			opponent = Math.floor((width-board)/2);
+			playerbox = Math.ceil((height-board)/2);
+			opponentbox = Math.floor((height-board)/2);
+			document.getElementById("board").style.width = board;
+			document.getElementById("board").style.height = board;
+			document.getElementById("player").style.width = player;
+			document.getElementById("player").style.height = height;
+			document.getElementById("use").style.height = height-70;
+			document.getElementById("place").style.height = height-70;
+			document.getElementById("playerbox").style.width = board;
+			document.getElementById("playerbox").style.height = playerbox;
+			document.getElementById("opponent").style.width = opponent;
+			document.getElementById("opponent").style.height = height;
+			document.getElementById("opponentbox").style.width = board;
+			document.getElementById("opponentbox").style.height = opponentbox;
+			document.getElementById("board").style.top = playerbox+"px";
+			document.getElementById("board").style.left = player+"px";
+			document.getElementById("player").style.top = "0px";
+			document.getElementById("player").style.left = "0px";
+			document.getElementById("playerbox").style.top = "0px";
+			document.getElementById("playerbox").style.left = player+"px";
+			document.getElementById("opponent").style.top = "0px";
+			document.getElementById("opponent").style.left = player+board+"px";
+			document.getElementById("opponentbox").style.top = playerbox+board+"px";
+			document.getElementById("opponentbox").style.left = player+"px";
+			document.getElementById("message").style.top = height/2-25;
+			document.getElementById("message").style.left = width/2-300;
+			boxes = board/10-2;
+			if(reset){
+				var divs="";
+				if(!userNumber){
+					for(i=9;i>=0;i--){
+						for(j=0;j<=9;j++){
+							divs = divs + "<div id='"+j+"x"+i+"' class='empty'  style='width:"+boxes+";height:"+boxes+"'></div>";
+						}
+					}
+				}else{
+					for(i=0;i<=9;i++){
+						for(j=9;j>=0;j--){
+							divs = divs + "<div id='"+j+"x"+i+"' class='empty'  style='width:"+boxes+";height:"+boxes+"'></div>";
+						}
+					}
+
+				}
+				document.getElementById("board").innerHTML = divs;
+			}else{
+				for(i=9;i>=0;i--){
+					for(j=0;j<=9;j++){
+						document.getElementById(i+"x"+j).style.height = boxes;
+						document.getElementById(i+"x"+j).style.width = boxes;
+					}
+				}
+			}
+		}
+
+		var time;
+		var waitToStart;
+		socket.on("getGameInfoResponse", function(data){
+			document.getElementById("p1name").innerHTML = getCookie("username");
+			document.getElementById("p2name").innerHTML = data.otherPlayer;
+			time = data.time+3000;
+			waitToStart = setInterval(startOn, 100);
+			userNumber=data.userNumber;
+		});
+		function startOn(){
+			document.getElementById("message").innerHTML = Math.ceil((time-Date.now())/1000);
+			if(Date.now()>=time){
+				timer();
+				clearInterval(waitToStart);
+			}
+		}
+		generateArea(true);
+		window.onbeforeunload = function(){
+			//socket.emit("gameover", {forfeit:true;username:getCookie("username")});
+		}
+	/*var hook = true;
+	window.onbeforeunload = function() {
+		if (hook) {
+			window.alert("Leaving the site will cause an automatic forfeit.");
+			return "Leaving the site will cause an automatic forfeit.";
+		}
+	}
+	function unhook() {
+		hook=false;
+	}*/
+	</script>
+	<script src="placing.js"></script>
+	<script src="using.js"></script>
+	<script src="turns.js"></script>
+</body>
+</html>

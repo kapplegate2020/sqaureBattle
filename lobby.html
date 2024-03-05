@@ -1,0 +1,148 @@
+<html>
+<head>
+	<script src="/socket.io/socket.io.js"></script>
+	<link rel="stylesheet" href="lobby.css">
+	<script>
+		function getCookie(cname) {
+			var name = cname + "=";
+			var decodedCookie = decodeURIComponent(document.cookie);
+			var ca = decodedCookie.split(';');
+			for(var i = 0; i <ca.length; i++) {
+				var c = ca[i];
+				while (c.charAt(0) == ' ') {
+					c = c.substring(1);
+				}
+				if (c.indexOf(name) == 0) {
+					return c.substring(name.length, c.length);
+				}
+			}
+			return "";
+		}
+		if (getCookie("username")==""){
+			window.location.href="/";
+		}
+		var socket = io.connect(window.location.href);
+		socket.emit("authorizeUser", {username:getCookie("username"),sessionCode:getCookie("sessionCode")});
+		socket.on("authorizeUserResponse", function(data){
+			if(!data.authorized){
+				if(data.errorCode==0){
+					document.cookie = "username=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+					document.cookie = "sessionCode=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+					window.location.href="/";
+				}else if(data.errorCode==1){
+					window.alert("session expired, please sign in again");
+					document.cookie = "username=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+					document.cookie = "sessionCode=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+					window.location.href="/";
+				}else if(data.errorCode==2){
+					window.alert("sorry, this profile is already being used on another page");
+					window.location.href="/";
+				}
+			}
+		});
+		socket.on("slowconnection", function(data){
+			window.alert("sorry, you're connection is slow");
+			window.location.href="/";
+		});
+	</script>
+	<title>Square Battle Home</title>
+	<link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet">
+</head>
+<body onresize="resizeWindow()">
+	<div id="center">
+		<br><h1>Welcome <span id="title"></span></h1><div id="logout" onclick="logout()">Logout</div><br><br>
+		<div class="sign" onclick="joinRandom()">Join Random Game</div>
+		<div class="sign" onclick="joinCode()">Join Game With Code</div>
+		<div class="sign" onclick="createCode()">Create Game With Code</div>
+	</div>
+	<div id="code"></div>
+	<div id="process">Processing...</div>
+	<div id="wait">Waiting For Another Player</div>
+	<script>
+	function resizeWindow(){
+		var width = window.innerWidth;
+		var height = window.innerHeight;
+		document.getElementById("center").style.margin = ((height-300)/2)+"px "+((width-700)/2)+"px";
+		document.getElementById("code").style.top = ((height-200)/2)+"px";
+		document.getElementById("code").style.left = ((width-300)/2)+"px";
+		document.getElementById("process").style.top = ((height-20)/2)+"px";
+		document.getElementById("process").style.left = ((width-100)/2)+"px";
+		document.getElementById("wait").style.top = ((height-40)/2)+"px";
+		document.getElementById("wait").style.left = ((width-120)/2)+"px";
+	}
+	document.getElementById("title").innerHTML = getCookie("username");50
+	resizeWindow();
+	function logout(){
+		document.cookie = "username=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+		document.cookie = "ingame=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+		document.cookie = "sessionCode=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+		window.location.href="/";
+	}
+	var busy = false;
+	function joinRandom(){
+		if(!busy){
+			busy = true;
+			socket.emit("joinRandom");
+			socket.on("alreadyInGame", function(data){
+				window.alert("sorry, you have already entered the queue");
+			});
+			document.getElementById("process").style.display = "block";
+			socket.on("goToGame", function(data){
+				if(data.wait){
+					document.getElementById("process").style.display = "none";
+					document.getElementById("wait").style.display = "block";
+					socket.on("playerFound", function(data){
+						document.cookie = "ingame = true";
+						window.location.href="/game";
+					});
+				}else{
+					document.cookie = "ingame = true";
+					window.location.href="/game";
+				}
+			});
+		}
+	}
+	function joinCode(){
+		if(!busy){
+			busy = true;
+			document.getElementById("code").innerHTML = "<p>Enter Code</p><input id='codeinput'></input><br>";
+			document.getElementById("code").innerHTML += "<div onclick='submitcode()' class='codebutton'>Submit</div><div onclick='cancelcode()' class='codebutton'>Cancel</div>";
+			document.getElementById("code").style.display = "block";
+		}
+	}
+	function createCode(){
+		if(!busy){
+			busy = true;
+			socket.emit("createcode", {username:getCookie("username")});
+			document.getElementById("process").style.display = "block";
+			socket.on("getcode", function(data){
+				document.getElementById("code").innerHTML += "<p>Your code is: "+data.code+"<p>";
+				document.getElementById("process").style.display = "none";
+				document.getElementById("code").style.display = "block";
+			});
+			socket.on("gotogame", function(data){
+				document.cookie = "ingame = true";
+				window.location.href="/game";
+			});
+		}
+	}
+	function submitcode(){
+		socket.emit("joincode", {username:getCookie("username"),code:parseInt(document.getElementById("codeinput").value)});
+		document.getElementById("process").style.display = "block";
+		socket.on("gotogame", function(data){
+			if(data.conf){
+				document.cookie = "ingame = true";
+				window.location.href="/game";
+			}else{
+				window.alert("Sorry, your code is invalid");
+				document.getElementById("process").style.display = "none";
+			}
+		});
+	}
+	function cancelcode(){
+		document.getElementById("code").style.display = "none";
+		busy = false;
+	}
+	</script>
+</body>
+</html>

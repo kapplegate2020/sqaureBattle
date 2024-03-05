@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "mongodb": "^4.8.1",
+    "password-hash": "^1.2.2",
+    "socket.io": "^4.5.1"
+  }
+}
