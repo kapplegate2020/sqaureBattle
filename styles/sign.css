@@ -1,0 +1,40 @@
+#center{
+    background-color:#ff0000;
+    text-align:center;
+    width:500px;
+    height:600px;
+}
+h1{
+    font-size:72px;
+}
+body{
+    background-color:#88ff88;
+    font-family: 'Roboto', sans-serif;
+}
+.button{
+    padding:5px;
+    background-color:#4444ff;
+    display:inline-block;
+    font-size:24px;
+    cursor:pointer;
+    margin:20px;
+}
+.button:hover{
+    background-color:#8888ff;
+}
+a{
+    color:black;
+}
+#process{
+    background-color:#88ff88;
+    display:none;
+    position:fixed;
+    width:100px;
+    height:20px;
+    border:3px black solid;
+    padding:5px;
+    text-align:center;
+}
+ul{
+    padding:0px;
+}
