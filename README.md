@@ -1,4 +1,4 @@
-# sqaureBattle
+# squareBattle
 This is a functioning, though not completed, online 2-player turn-based strategy game.
 It is built with mongoDB to hold usernames and passwords.
 It uses node.js to run the server and manage connections.
